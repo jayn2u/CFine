@@ -1,13 +1,14 @@
 import argparse
 from config import log_config 
 import logging
+from dataset_config import CUHK_PEDES_IMAGE_DIR, CUHK_PEDES_ANNO_DIR
 
 
 def parse_args():
     parser = argparse.ArgumentParser(description='command for evaluate on CUHK-PEDES')
     # Directory
-    parser.add_argument('--image_dir', type=str, default='/opt/data/private/Datasets/CUHK-PEDES/imgs/', help='directory to store dataset')
-    parser.add_argument('--anno_dir', type=str, default='./cuhkpedes/processed_data', help='directory to store anno file')
+    parser.add_argument('--image_dir', type=str, default=CUHK_PEDES_IMAGE_DIR, help='directory to store dataset')
+    parser.add_argument('--anno_dir', type=str, default=CUHK_PEDES_ANNO_DIR, help='directory to store anno file')
     parser.add_argument('--model_path', type=str, default='./checkpoints/CFine-CLIP', help='directory to load checkpoint')
     parser.add_argument('--log_dir', type=str, help='directory to store log')
     parser.add_argument('--pretrain_dir', type=str, default=None,

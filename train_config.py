@@ -2,6 +2,7 @@ import argparse
 import os
 import logging
 from config import log_config, dir_config
+from dataset_config import CUHK_PEDES_IMAGE_DIR, CUHK_PEDES_ANNO_DIR
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -10,8 +11,8 @@ def parse_args():
     parser = argparse.ArgumentParser(description='command for train on CUHK-PEDES')
 
     # Directory
-    parser.add_argument('--image_dir', type=str, default='/opt/data/private/Datasets/CUHK-PEDES/imgs/', help='directory to store dataset')
-    parser.add_argument('--anno_dir', type=str, default='./cuhkpedes/processed_data', help='directory to store anno file')
+    parser.add_argument('--image_dir', type=str, default=CUHK_PEDES_IMAGE_DIR, help='directory to store dataset')
+    parser.add_argument('--anno_dir', type=str, default=CUHK_PEDES_ANNO_DIR, help='directory to store anno file')
     parser.add_argument('--checkpoint_dir', type=str, default='./checkpoints/CFine-CLIP-test',
                                             help='directory to store checkpoint')
     parser.add_argument('--model_path', type=str, default=None, help='directory to pretrained model, whole model or just visual part')

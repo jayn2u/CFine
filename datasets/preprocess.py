@@ -3,10 +3,14 @@ import json
 import argparse
 import string
 import os
+import sys
 from zhon import hanzi
 from collections import namedtuple
 
 import nltk
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from dataset_config import CUHK_PEDES_IMAGE_DIR, CUHK_PEDES_JSON_ROOT, CUHK_PEDES_ANNO_DIR
 
 
 
@@ -333,9 +337,9 @@ def process_data(args):
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Command for data preprocessing')
-    parser.add_argument('--img_root', type=str, default='E:\deep code learning\Datasets\CUHK-PEDES/imgs')
-    parser.add_argument('--json_root', type=str, default='E:\deep code learning\Datasets\CUHK-PEDES/reid_raw.json')
-    parser.add_argument('--out_root', type=str, default='D:\Firefox download\SAF-main\cuhkpedes/processed_data')
+    parser.add_argument('--img_root', type=str, default=CUHK_PEDES_IMAGE_DIR)
+    parser.add_argument('--json_root', type=str, default=CUHK_PEDES_JSON_ROOT)
+    parser.add_argument('--out_root', type=str, default=CUHK_PEDES_ANNO_DIR)
     parser.add_argument('--min_word_count', type=int, default=0)
     parser.add_argument('--default_image_size', type=int, default=224)
     parser.add_argument('--load_split', action='store_true')

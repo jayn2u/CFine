@@ -1,0 +1,17 @@
+[project]
+name = "cfine"
+version = "0.1.0"
+description = "CLIP-Driven Fine-grained Text-Image Person Re-identification"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "torch>=2.2.0",
+    "torchvision>=0.17.0",
+    "scipy>=1.11.0",
+    "numpy",
+    "pillow",
+    "matplotlib",
+    "opencv-python",
+    "nltk",
+    "zhon",
+]
