@@ -2,11 +2,16 @@
 
 Dataset paths, structure, and usage notes for future agents.
 
+Use `uv run python` to execute Python code.
+
 ## Dataset Root
 
-```
-/data/jayn2u/lab_datasets
-```
+Lab datasets are stored at one of:
+
+- `/mnt/data/lab_datasets`
+- `/data/jayn2u/lab_datasets`
+
+These paths refer to the same storage. Use whichever exists on the current machine.
 
 Path constants live in `dataset_config.py`. Update that file when paths change.
 
