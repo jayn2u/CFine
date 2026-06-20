@@ -1,16 +1,18 @@
+import os
 import torch
 from torch import nn
 from models.pytorch_transformers import BertModel, BertConfig, BertTokenizer
+
+BERT_MODEL = os.environ.get('CFINE_BERT_MODEL', 'bert-base-uncased')
 
 
 class Bert(nn.Module):
     def __init__(self): 
         super(Bert, self).__init__()
 
-        self.tokenizer = BertTokenizer.from_pretrained('/opt/data/private/Checkpoints/bert-base-uncased/bert-base-uncased-vocab.txt')
-        modelConfig = BertConfig.from_pretrained('/opt/data/private/Checkpoints/bert-base-uncased/bert_config.json')
-        self.textExtractor = BertModel.from_pretrained(
-            '/opt/data/private/Checkpoints/bert-base-uncased/pytorch_model.bin', config=modelConfig)
+        self.tokenizer = BertTokenizer.from_pretrained(BERT_MODEL)
+        modelConfig = BertConfig.from_pretrained(BERT_MODEL)
+        self.textExtractor = BertModel.from_pretrained(BERT_MODEL, config=modelConfig)
 
     def pre_process2(self, texts):
         tokens, segments, input_masks, text_length = [], [], [], []

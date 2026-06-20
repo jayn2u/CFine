@@ -1,6 +1,6 @@
 import os
 
-DATASET_ROOT = '/data/jayn2u/lab_datasets'
+DATASET_ROOT = '/mnt/data/lab_datasets'
 
 CUHK_PEDES_DIR = os.path.join(DATASET_ROOT, 'CUHK-PEDES')
 CUHK_PEDES_IMAGE_DIR = os.path.join(CUHK_PEDES_DIR, 'imgs')

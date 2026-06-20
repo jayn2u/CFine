@@ -12,18 +12,24 @@ env/
 
 # Preprocessed dataset
 cuhkpedes/processed_data/
+*.pkl
 
 # Training / evaluation outputs
-checkpoints/
+/checkpoints/
 *.pth
 *.pth.tar
 *.pt
 *.ckpt
+*.npz
+*.bin
 
 # Logs and visualizations
 *.log
+train.txt
+test.txt
 train.jpg
 test.jpg
+nltk_data/
 
 # IDE / OS
 .idea/

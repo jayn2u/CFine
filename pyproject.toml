@@ -14,4 +14,9 @@ dependencies = [
     "opencv-python",
     "nltk",
     "zhon",
+    "clip @ git+https://github.com/openai/CLIP.git",
+    "boto3",
+    "requests",
+    "tqdm",
+    "ml-collections",
 ]

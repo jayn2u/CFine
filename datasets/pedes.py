@@ -6,8 +6,14 @@ import pickle
 import json
 from PIL import Image
 from utils.directory import check_exists
-from scipy.misc import imread, imresize
 import datasets.preprocess as preprocess
+
+
+def _load_image(img_path):
+    img = Image.open(img_path)
+    if img.mode != 'RGB':
+        img = img.convert('RGB')
+    return img
 
 class Namespace:
     def __init__(self, **kwargs):
@@ -148,10 +154,7 @@ class CuhkPedes(data.Dataset):
 
         img_path=os.path.join(self.image_root,img_path) 
 
-        img = imread(img_path)
-        if len(img.shape) == 2:
-            img = np.dstack((img,img,img))
-        img = Image.fromarray(img)
+        img = _load_image(img_path)
 
         if self.transform is not None:
             img = self.transform(img)
@@ -177,10 +180,7 @@ class CuhkPedes(data.Dataset):
 
         img_path=os.path.join(self.image_root,img_path)
 
-        img = imread(img_path)
-        if len(img.shape) == 2:
-            img = np.dstack((img,img,img))
-        img = Image.fromarray(img)
+        img = _load_image(img_path)
 
         if self.transform is not None:
             img = self.transform(img)
@@ -206,10 +206,7 @@ class CuhkPedes(data.Dataset):
 
         img_path=os.path.join(self.image_root,img_path)
 
-        img = imread(img_path)
-        if len(img.shape) == 2:
-            img = np.dstack((img,img,img))
-        img = Image.fromarray(img)
+        img = _load_image(img_path)
 
         # if self.transform is not None:
         #     img = self.transform(img)
