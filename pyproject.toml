@@ -19,4 +19,5 @@ dependencies = [
     "requests",
     "tqdm",
     "ml-collections",
+    "wandb>=0.28.1",
 ]

@@ -365,3 +365,48 @@ def topk(sim, target_gallery, target_query, k=[1, 10], dim=1):
         correct_k = torch.sum(correct_k > 0).float()
         result.append(correct_k * 100 / size_total)
     return result
+
+
+def retrieval_metrics(similarity, query_ids, gallery_ids, prefix):
+    """Compute CMC recall, mAP, and mINP for one retrieval direction."""
+    indices = torch.argsort(similarity, dim=1, descending=True)
+    predicted_ids = gallery_ids[indices.cpu()]
+    matches = predicted_ids.eq(query_ids.view(-1, 1))
+
+    cumulative_matches = matches.cumsum(dim=1)
+    cmc = cumulative_matches.clamp(max=1).float().mean(dim=0) * 100.0
+    metrics = {}
+    gallery_size = matches.size(1)
+    for rank_value in (1, 5, 10):
+        rank_index = min(rank_value, gallery_size) - 1
+        metrics[f"{prefix}_R{rank_value}"] = float(cmc[rank_index])
+
+    average_precisions = []
+    inverse_negative_penalties = []
+    positions = torch.arange(
+        1,
+        gallery_size + 1,
+        dtype=torch.float32,
+        device=matches.device,
+    )
+    precisions = cumulative_matches.float() / positions.view(1, -1)
+    for row_index, match_row in enumerate(matches):
+        relevant_positions = match_row.nonzero(as_tuple=False).flatten()
+        if relevant_positions.numel() == 0:
+            average_precisions.append(torch.tensor(0.0, device=matches.device))
+            inverse_negative_penalties.append(
+                torch.tensor(0.0, device=matches.device)
+            )
+            continue
+        average_precisions.append(precisions[row_index][match_row].mean())
+        last_position = relevant_positions[-1]
+        inverse_negative_penalties.append(
+            cumulative_matches[row_index, last_position].float()
+            / (last_position.float() + 1.0)
+        )
+
+    metrics[f"{prefix}_mAP"] = float(torch.stack(average_precisions).mean() * 100.0)
+    metrics[f"{prefix}_mINP"] = float(
+        torch.stack(inverse_negative_penalties).mean() * 100.0
+    )
+    return metrics
