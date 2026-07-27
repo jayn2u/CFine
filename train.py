@@ -13,6 +13,18 @@ from train_config import config
 from solver import WarmupMultiStepLR
 from test import test
 from utils.CRLoss import CRLoss
+from utils.efficiency import (
+    build_epoch_efficiency_metrics,
+    finish_cuda_timer,
+    get_peak_vram_metrics,
+    start_measurement,
+)
+from utils.wandb_tracking import (
+    finish_train_run,
+    log_train_epoch_metrics,
+    log_val_metrics,
+    start_train_run,
+)
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -36,9 +48,14 @@ def save_checkpoint(state, epoch, dst, is_best):
 
 
 def train(epoch, train_loader, network, optimizer, compute_loss, cr_loss_fun, args):
-    train_loss = AverageMeter()
-    image_pre = AverageMeter()
-    text_pre = AverageMeter()
+    meters = {
+        "loss": AverageMeter(),
+        "cmpm_loss": AverageMeter(),
+        "cmpc_loss": AverageMeter(),
+        "sim_loss": AverageMeter(),
+        "image_acc": AverageMeter(),
+        "text_acc": AverageMeter(),
+    }
 
     # switch to train mode
     network.train()
@@ -102,14 +119,18 @@ def train(epoch, train_loader, network, optimizer, compute_loss, cr_loss_fun, ar
         loss.backward()
         optimizer.step()
 
-        train_loss.update(loss.item(), images.shape[0])
-        image_pre.update(image_precision, images.shape[0])
-        text_pre.update(text_precision, images.shape[0])
+        batch_size = images.shape[0]
+        meters["loss"].update(loss.item(), batch_size)
+        meters["cmpm_loss"].update(cmpm_loss.item(), batch_size)
+        meters["cmpc_loss"].update(cmpc_loss.item(), batch_size)
+        meters["sim_loss"].update(sim_loss.item(), batch_size)
+        meters["image_acc"].update(image_precision, batch_size)
+        meters["text_acc"].update(text_precision, batch_size)
 
-    return train_loss.avg, image_pre.avg, text_pre.avg
+    return meters
 
 
-def main(args):
+def main(args, wandb_session=None):
 
     set_seed(args)
 
@@ -166,60 +187,117 @@ def main(args):
     scheduler = WarmupMultiStepLR(optimizer, (20, 25, 35), 0.1, 0.01, 10, "linear")  # (20, 25, 35)
     ac_t2i_top1_best = 0.0
     best_epoch = 0
+    session = wandb_session if wandb_session is not None else start_train_run(args)
+    device = torch.device("cuda")
+    cumulative_gpu_seconds = 0.0
 
-    for epoch in range(1, args.num_epoches + 1 - args.start_epoch):
-        network.train()
-        train_loss, image_precision, text_precision = train(
-            args.start_epoch + epoch,
-            train_loader,
-            network,
-            optimizer,
-            compute_loss,
-            cr_loss_fun,
-            args,
-        )
-
-        is_best = False
-        logging.info(
-            "Epoch {}/{} Finished, train_loss: {:.3f}, image_precision: {:.3f}, text_precision: {:.3f}".format(
-                args.start_epoch + epoch, args.num_epoches, train_loss, image_precision, text_precision
+    try:
+        for epoch in range(1, args.num_epoches + 1 - args.start_epoch):
+            current_epoch = args.start_epoch + epoch
+            network.train()
+            train_started_at = start_measurement(device)
+            meters = train(
+                current_epoch,
+                train_loader,
+                network,
+                optimizer,
+                compute_loss,
+                cr_loss_fun,
+                args,
             )
-        )
-        scheduler.step()
+            train_seconds = finish_cuda_timer(device, train_started_at)
+            train_vram = get_peak_vram_metrics(device)
+            cumulative_gpu_seconds += train_seconds
+            train_efficiency = build_epoch_efficiency_metrics(
+                train_seconds,
+                meters["loss"].count,
+                cumulative_gpu_seconds,
+            )
+            log_train_epoch_metrics(
+                session,
+                current_epoch,
+                meters,
+                optimizer.param_groups[0]["lr"],
+                efficiency_metrics=train_efficiency,
+                vram_metrics=train_vram,
+            )
 
-        if epoch % 1 == 0:
-            (
-                ac_top1_i2t,
-                ac_top5_i2t,
-                ac_top10_i2t,
-                ac_top1_t2i,
-                ac_top5_t2i,
-                ac_top10_t2i,
-                test_time,
-            ) = test(test_loader, network, args, unique_image, epoch)
+            logging.info(
+                "Epoch {}/{} Finished, train_loss: {:.3f}, image_precision: {:.3f}, text_precision: {:.3f}".format(
+                    current_epoch,
+                    args.num_epoches,
+                    meters["loss"].avg,
+                    meters["image_acc"].avg,
+                    meters["text_acc"].avg,
+                )
+            )
+            scheduler.step()
+
+            val_started_at = start_measurement(device)
+            metrics = test(
+                test_loader,
+                network,
+                args,
+                unique_image,
+                epoch,
+                return_metrics=True,
+            )
+            val_seconds = finish_cuda_timer(device, val_started_at)
+            val_vram = get_peak_vram_metrics(device)
+            log_val_metrics(
+                session,
+                current_epoch,
+                metrics,
+                efficiency_metrics={"epoch_seconds": val_seconds},
+                vram_metrics=val_vram,
+            )
 
             state = {
                 "network": network.state_dict(),
                 "optimizer": optimizer.state_dict(),
                 "W": compute_loss.W,
-                "epoch": args.start_epoch + epoch,
+                "epoch": current_epoch,
             }
 
-            if ac_top1_t2i > ac_t2i_top1_best:
-                best_epoch = epoch
-                ac_t2i_top1_best = ac_top1_t2i
-                save_checkpoint(state, epoch, args.checkpoint_dir, is_best)
+            if metrics["t2i_R1"] > ac_t2i_top1_best:
+                best_epoch = current_epoch
+                ac_t2i_top1_best = metrics["t2i_R1"]
+                save_checkpoint(state, current_epoch, args.checkpoint_dir, False)
 
             logging.info("Text-to-Image:")
-            logging.info(" R@1: {:.2f}, R@5: {:.2f}, R@10: {:.2f}".format(
-                    ac_top1_t2i, ac_top5_t2i, ac_top10_t2i))
+            logging.info(
+                " R@1: {:.2f}, R@5: {:.2f}, R@10: {:.2f}".format(
+                    metrics["t2i_R1"],
+                    metrics["t2i_R5"],
+                    metrics["t2i_R10"],
+                )
+            )
             logging.info("Image-to-Text:")
-            logging.info(" R@1: {:.2f}, R@5: {:.2f}, R@10: {:.2f}".format(
-                    ac_top1_i2t, ac_top5_i2t, ac_top10_i2t))
+            logging.info(
+                " R@1: {:.2f}, R@5: {:.2f}, R@10: {:.2f}".format(
+                    metrics["i2t_R1"],
+                    metrics["i2t_R5"],
+                    metrics["i2t_R10"],
+                )
+            )
 
-    logging.info("Train Finished!")
-    logging.info("The best epoch:{}, the R@1 is: {:.2f}".format(best_epoch, ac_t2i_top1_best))
-    logging.info(args.checkpoint_dir)
+        logging.info("Train Finished!")
+        logging.info(
+            "The best epoch:{}, the R@1 is: {:.2f}".format(
+                best_epoch,
+                ac_t2i_top1_best,
+            )
+        )
+        logging.info(args.checkpoint_dir)
+        finish_train_run(
+            session,
+            ac_t2i_top1_best,
+            best_epoch,
+            args.checkpoint_dir,
+        )
+        return ac_t2i_top1_best, best_epoch
+    finally:
+        session.finish()
 
 
 if __name__ == "__main__":

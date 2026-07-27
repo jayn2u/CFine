@@ -8,7 +8,8 @@ __pycache__/
 # Virtual environment
 .venv/
 venv/
-env/
+env/*
+!env/.env.example
 
 # Preprocessed dataset
 cuhkpedes/processed_data/

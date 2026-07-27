@@ -43,13 +43,29 @@ Organize them in `your dataset root dir` folder as follows:
 
 ## Training
 
-```python
-python train.py 
+```bash
+python train.py
 ```
+
+To track the same training, retrieval, timing, throughput, and peak-VRAM
+metrics used by the local IRRA project, create a local environment file and
+enable W&B explicitly:
+
+```bash
+cp env/.env.example env/.env
+# Fill in WANDB_API_KEY and WANDB_ENTITY. WANDB_PROJECT defaults to cfine.
+python train.py --wandb
+```
+
+Process environment variables take precedence over `env/.env`. The run records
+training loss components and accuracy, learning rate, epoch time, examples per
+second, cumulative GPU hours, peak allocated/reserved VRAM, and bidirectional
+T2I/I2T R@1/R@5/R@10, mAP, and mINP. Runs also write `wandb_meta.json` and
+`wandb_run_id` in the checkpoint directory.
 
 ## Testing
 
-```python
+```bash
 python test.py
 ```
 

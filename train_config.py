@@ -54,6 +54,17 @@ def parse_args():
     parser.add_argument('--epoches_decay', type=str, default='20,25,35', help='#epoches when learning rate decays')
 
     parser.add_argument('--nsave', type=str, default='')
+
+    # Weights & Biases
+    parser.add_argument('--wandb', action='store_true', help='enable Weights & Biases tracking')
+    parser.add_argument('--wandb_project', type=str, default='', help='override WANDB_PROJECT')
+    parser.add_argument('--wandb_entity', type=str, default='', help='override WANDB_ENTITY')
+    parser.add_argument('--wandb_run_name', type=str, default='', help='custom W&B run name')
+    parser.add_argument('--wandb_group', type=str, default='', help='custom W&B run group')
+    parser.add_argument('--wandb_notes', type=str, default='', help='W&B run notes')
+    parser.add_argument('--wandb_tags', nargs='*', default=[], help='W&B run tags')
+    parser.add_argument('--wandb_env_file', type=str, default='env/.env', help='W&B environment file relative to the project root')
+
     # Hyperparams setting
     parser.add_argument('--margin', type=float, default=0.2)          # 0.2
     parser.add_argument('--img_k_ratio', type=float, default=0.1)     # 0.1

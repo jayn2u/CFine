@@ -107,3 +107,20 @@ Running `datasets/preprocess.py` requires `nltk` and `zhon` (listed in `pyprojec
 - The codebase currently supports **CUHK-PEDES only**. ICFG-PEDES and RSTPReid paths are registered in `dataset_config.py` but have no loader yet.
 - BERT checkpoint paths in `models/bert.py` are separate from datasets and still point to `/opt/data/private/Checkpoints/...`.
 - `lab_datasets` also contains ImageNet, CIFAR-100, ms-coco, and other datasets that are unrelated to CFine.
+
+## Weights & Biases
+
+W&B tracking is opt-in through `python train.py --wandb`. Configuration is read
+from process environment variables first and then `<project>/env/.env`:
+`WANDB_API_KEY`, `WANDB_ENTITY`, and `WANDB_PROJECT`. The default project is
+`cfine`.
+
+The IRRA-compatible namespaces are:
+
+- `train/*`: total/CMPM/CMPC/similarity losses, image/text accuracy, learning
+  rate, epoch seconds, examples per second, cumulative GPU hours, and peak
+  allocated/reserved VRAM.
+- `val/*`: T2I/I2T R@1, R@5, R@10, mAP, mINP, corresponding `error@k`,
+  validation seconds, and peak allocated/reserved VRAM.
+
+Do not commit `env/.env`. Use `env/.env.example` as the template.

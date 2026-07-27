@@ -6,7 +6,7 @@ import logging
 import gc
 import torch
 import torchvision.transforms as transforms
-from utils.metric import AverageMeter, compute_topk
+from utils.metric import AverageMeter, compute_topk, retrieval_metrics
 from test_config import config
 from config import data_config, network_config, get_image_unique
 import numpy as np
@@ -17,7 +17,7 @@ from datasets.pedes import CuhkPedes
 from utils.visualize import visualize_image, visualize_img
 
 
-def test(data_loader, network, args, unique_image, epoch=0):
+def test(data_loader, network, args, unique_image, epoch=0, return_metrics=False):
     batch_time = AverageMeter()
     normalize = transforms.Normalize(
         mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
@@ -78,6 +78,22 @@ def test(data_loader, network, args, unique_image, epoch=0):
             ac_top5_t2i,
             ac_top10_t2i,
         ) = result
+        if return_metrics:
+            metrics = retrieval_metrics(
+                score,
+                query_ids=labels_bank[unique_image],
+                gallery_ids=labels_bank,
+                prefix="i2t",
+            )
+            metrics.update(
+                retrieval_metrics(
+                    score.t(),
+                    query_ids=labels_bank,
+                    gallery_ids=labels_bank[unique_image],
+                    prefix="t2i",
+                )
+            )
+            return metrics
         return (
             ac_top1_i2t,
             ac_top5_i2t,
