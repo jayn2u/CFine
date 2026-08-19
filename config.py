@@ -11,6 +11,7 @@ import logging
 from datasets.pedes import CuhkPedes
 from models.model import Model
 from utils import directory
+from utils.training import extract_ema_model_state_dict
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -42,7 +43,12 @@ def network_config(args, split='train', param=None, resume=False, model_path=Non
         directory.check_file(model_path, 'model_file')
         checkpoint = torch.load(model_path)
         args.start_epoch = checkpoint['epoch'] + 1
-        network.load_state_dict(checkpoint['network'])
+        if split == 'test' and 'ema_model' in checkpoint:
+            network.module.load_state_dict(
+                extract_ema_model_state_dict(checkpoint['ema_model'])
+            )
+        else:
+            network.load_state_dict(checkpoint['network'])
         print('==> Loading checkpoint "{}"'.format(model_path))
     else:
         # pretrained

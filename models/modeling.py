@@ -12,6 +12,7 @@ from os.path import join as pjoin
 import torch
 import torch.nn as nn
 import numpy as np
+from torch.utils.checkpoint import checkpoint
 
 from torch.nn import CrossEntropyLoss, Dropout, Softmax, Linear, Conv2d, LayerNorm
 from torch.nn.modules.utils import _pair
@@ -233,6 +234,7 @@ class Encoder(nn.Module):
         self.vis = True
         self.layer = nn.ModuleList()
         self.encoder_norm = LayerNorm(config.hidden_size, eps=1e-6)
+        self.gradient_checkpointing = False
         for _ in range(config.transformer["num_layers"]):
             layer = Block(config, vis)
             self.layer.append(copy.deepcopy(layer))
@@ -241,7 +243,18 @@ class Encoder(nn.Module):
         all_hidden_states=()
         attn_weights = []
         for layer_block in self.layer:
-            hidden_states, weights = layer_block(hidden_states)
+            if (
+                self.gradient_checkpointing
+                and self.training
+                and torch.is_grad_enabled()
+            ):
+                hidden_states, weights = checkpoint(
+                    layer_block,
+                    hidden_states,
+                    use_reentrant=False,
+                )
+            else:
+                hidden_states, weights = layer_block(hidden_states)
             all_hidden_states=all_hidden_states+(hidden_states,)
             if self.vis:
                 attn_weights.append(weights)
@@ -269,6 +282,9 @@ class VisionTransformer(nn.Module):
         self.classifier = config.classifier
 
         self.transformer = Transformer(config, img_size, vis)
+
+    def set_gradient_checkpointing(self, enabled: bool):
+        self.transformer.encoder.gradient_checkpointing = enabled
     def forward(self, x, labels=None):
         x, attn_weights,all_hidden_states = self.transformer(x)
         logits = x

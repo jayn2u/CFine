@@ -25,6 +25,14 @@ from utils.wandb_tracking import (
     log_val_metrics,
     start_train_run,
 )
+from utils.training import (
+    autocast_context,
+    build_ema_model,
+    build_grad_scaler,
+    optimizer_step,
+    unwrap_model,
+    validate_training_options,
+)
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -47,7 +55,17 @@ def save_checkpoint(state, epoch, dst, is_best):
         shutil.copyfile(filename, dst_best)
 
 
-def train(epoch, train_loader, network, optimizer, compute_loss, cr_loss_fun, args):
+def train(
+    epoch,
+    train_loader,
+    network,
+    optimizer,
+    compute_loss,
+    cr_loss_fun,
+    args,
+    scaler,
+    ema_model=None,
+):
     meters = {
         "loss": AverageMeter(),
         "cmpm_loss": AverageMeter(),
@@ -59,6 +77,9 @@ def train(epoch, train_loader, network, optimizer, compute_loss, cr_loss_fun, ar
 
     # switch to train mode
     network.train()
+    raw_network = unwrap_model(network)
+    amp_enabled = getattr(args, "amp", False)
+    amp_dtype = getattr(args, "amp_dtype", "fp16")
     global_step = 0
 
     start_time = time.time()
@@ -68,30 +89,36 @@ def train(epoch, train_loader, network, optimizer, compute_loss, cr_loss_fun, ar
             segments,
             input_masks,
             caption_length,
-        ) = network.module.language_model.pre_process(captions)
+        ) = raw_network.language_model.pre_process(captions)
         tokens = tokens.cuda()
         segments = segments.cuda()
         input_masks = input_masks.cuda()
         images = images.cuda()
         labels = labels.cuda()
-        img_output, text_output, img_f, text_f, sim_cs, sim_cd = network(
-            images, tokens, segments, input_masks
-        )
-        (
-            cmpm_loss,
-            cmpc_loss,
-            loss,
-            image_precision,
-            text_precision,
-            pos_avg_sim,
-            neg_arg_sim,
-        ) = compute_loss(
-            img_output, text_output, img_f, text_f, labels, args.lambda_diversity
-        )
-        
-        sim = sim_cs + sim_cd
-        sim_loss = cr_loss_fun(sim, labels, semi=False)
-        loss = loss + sim_loss * 10
+        with autocast_context(amp_enabled, amp_dtype):
+            img_output, text_output, img_f, text_f, sim_cs, sim_cd = network(
+                images, tokens, segments, input_masks
+            )
+            (
+                cmpm_loss,
+                cmpc_loss,
+                loss,
+                image_precision,
+                text_precision,
+                pos_avg_sim,
+                neg_arg_sim,
+            ) = compute_loss(
+                img_output,
+                text_output,
+                img_f,
+                text_f,
+                labels,
+                args.lambda_diversity,
+            )
+
+            sim = sim_cs + sim_cd
+            sim_loss = cr_loss_fun(sim, labels, semi=False)
+            loss = loss + sim_loss * 10
 
         current_lr = []
         for params in optimizer.param_groups:
@@ -116,8 +143,9 @@ def train(epoch, train_loader, network, optimizer, compute_loss, cr_loss_fun, ar
 
         # compute gradient and do ADAM step
         optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
+        step_succeeded = optimizer_step(loss, optimizer, scaler)
+        if step_succeeded and ema_model is not None:
+            ema_model.update_parameters(raw_network)
 
         batch_size = images.shape[0]
         meters["loss"].update(loss.item(), batch_size)
@@ -133,6 +161,7 @@ def train(epoch, train_loader, network, optimizer, compute_loss, cr_loss_fun, ar
 def main(args, wandb_session=None):
 
     set_seed(args)
+    validate_training_options(args)
 
     # transform
     normalize = transforms.Normalize(
@@ -183,6 +212,20 @@ def main(args, wandb_session=None):
     network, optimizer = network_config(
         args, "train", compute_loss.parameters(), args.resume, args.model_path
     )
+    amp_enabled = getattr(args, "amp", False)
+    amp_dtype = getattr(args, "amp_dtype", "fp16")
+    scaler = build_grad_scaler(amp_enabled, amp_dtype)
+    ema_model = (
+        build_ema_model(network, getattr(args, "ema_decay", 0.999))
+        if getattr(args, "ema", False)
+        else None
+    )
+    if args.resume:
+        checkpoint = torch.load(args.model_path, map_location="cpu")
+        if "scaler" in checkpoint:
+            scaler.load_state_dict(checkpoint["scaler"])
+        if ema_model is not None and "ema_model" in checkpoint:
+            ema_model.load_state_dict(checkpoint["ema_model"])
     # lr_scheduler
     scheduler = WarmupMultiStepLR(optimizer, (20, 25, 35), 0.1, 0.01, 10, "linear")  # (20, 25, 35)
     ac_t2i_top1_best = 0.0
@@ -204,6 +247,8 @@ def main(args, wandb_session=None):
                 compute_loss,
                 cr_loss_fun,
                 args,
+                scaler,
+                ema_model,
             )
             train_seconds = finish_cuda_timer(device, train_started_at)
             train_vram = get_peak_vram_metrics(device)
@@ -234,9 +279,10 @@ def main(args, wandb_session=None):
             scheduler.step()
 
             val_started_at = start_measurement(device)
+            eval_network = ema_model.module if ema_model is not None else network
             metrics = test(
                 test_loader,
-                network,
+                eval_network,
                 args,
                 unique_image,
                 epoch,
@@ -257,7 +303,10 @@ def main(args, wandb_session=None):
                 "optimizer": optimizer.state_dict(),
                 "W": compute_loss.W,
                 "epoch": current_epoch,
+                "scaler": scaler.state_dict(),
             }
+            if ema_model is not None:
+                state["ema_model"] = ema_model.state_dict()
 
             if metrics["t2i_R1"] > ac_t2i_top1_best:
                 best_epoch = current_epoch

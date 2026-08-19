@@ -5,6 +5,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from torch import nn
+from torch.utils.checkpoint import checkpoint
 
 
 class Bottleneck(nn.Module):
@@ -200,16 +201,25 @@ class Transformer(nn.Module):
         self.width = width
         self.layers = layers
         self.resblocks = nn.Sequential(*[ResidualAttentionBlock(width, heads, attn_mask) for _ in range(layers)])
+        self.gradient_checkpointing = False
+
+    def set_gradient_checkpointing(self, enabled: bool):
+        self.gradient_checkpointing = enabled
 
     def forward(self, x: torch.Tensor):
-        # return self.resblocks(x)
         attention_score = []
         for i in range(self.layers):
-            x, score = self.resblocks[i](x)
+            block = self.resblocks[i]
+            if (
+                self.gradient_checkpointing
+                and self.training
+                and torch.is_grad_enabled()
+            ):
+                x, score = checkpoint(block, x, use_reentrant=False)
+            else:
+                x, score = block(x)
             attention_score.append(score)
         return x, attention_score
-
-
 
 
 class VisionTransformer_clip(nn.Module):
@@ -228,6 +238,9 @@ class VisionTransformer_clip(nn.Module):
 
         self.ln_post = LayerNorm(width)
         # self.proj = nn.Parameter(scale * torch.randn(width, output_dim))
+
+    def set_gradient_checkpointing(self, enabled: bool):
+        self.transformer.set_gradient_checkpointing(enabled)
 
     def forward(self, x: torch.Tensor):
         x = self.conv1(x)  # shape = [*, width, grid, grid]

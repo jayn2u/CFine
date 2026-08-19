@@ -57,6 +57,17 @@ cp env/.env.example env/.env
 python train.py --wandb
 ```
 
+To run the same AMP, EMA, and gradient-checkpointing efficiency strategy as
+the local RDE and IRRA baselines:
+
+```bash
+./run_cfine_amp_ema_gc.sh
+```
+
+The individual switches are `--amp`, `--amp_dtype {fp16,bf16}`, `--ema`,
+`--ema_decay`, and `--gradient_checkpointing`. EMA weights are used for
+validation and preferred automatically when testing an EMA-enabled checkpoint.
+
 Process environment variables take precedence over `env/.env`. The run records
 training loss components and accuracy, learning rate, epoch time, examples per
 second, cumulative GPU hours, peak allocated/reserved VRAM, and bidirectional

@@ -5,6 +5,7 @@ import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.utils.checkpoint import checkpoint
 
 
 def conv_layer(in_dim, out_dim, kernel_size=1, padding=0, stride=1):
@@ -249,6 +250,10 @@ class ResidualAttention(nn.Module):
         ])
         self.num_layers = num_layers
         self.norm = out_norm
+        self.gradient_checkpointing = False
+
+    def set_gradient_checkpointing(self, enabled: bool):
+        self.gradient_checkpointing = enabled
 
     def forward(self, x, y=None, pad_mask=None):
         '''
@@ -262,9 +267,33 @@ class ResidualAttention(nn.Module):
         output = x
         for layer in self.layers:
             if self.att_type == 'cross':
-                output = layer(output, y, pad_mask=pad_mask)
+                if (
+                    self.gradient_checkpointing
+                    and self.training
+                    and torch.is_grad_enabled()
+                ):
+                    output = checkpoint(
+                        layer,
+                        output,
+                        y,
+                        pad_mask,
+                        use_reentrant=False,
+                    )
+                else:
+                    output = layer(output, y, pad_mask=pad_mask)
             else:
-                output = layer(output)
+                if (
+                    self.gradient_checkpointing
+                    and self.training
+                    and torch.is_grad_enabled()
+                ):
+                    output = checkpoint(
+                        layer,
+                        output,
+                        use_reentrant=False,
+                    )
+                else:
+                    output = layer(output)
 
         if self.norm is not None:
             # Lx, b, dx -> b, Lx, dx

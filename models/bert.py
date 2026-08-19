@@ -26,6 +26,9 @@ class Bert(nn.Module):
             tokenized_text.append('[PAD]')
         tokens=tokenized_text
         return tokens
+
+    def set_gradient_checkpointing(self, enabled: bool):
+        self.textExtractor.encoder.gradient_checkpointing = enabled
     def pre_process(self, texts):
 
         tokens, segments, input_masks, text_length = [], [], [], []

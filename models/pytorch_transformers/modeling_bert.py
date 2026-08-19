@@ -27,6 +27,7 @@ from io import open
 import torch
 from torch import nn
 from torch.nn import CrossEntropyLoss, MSELoss
+from torch.utils.checkpoint import checkpoint
 
 from .modeling_utils import (WEIGHTS_NAME, CONFIG_NAME, PretrainedConfig, PreTrainedModel,
                              prune_linear_layer, add_start_docstrings)
@@ -421,6 +422,7 @@ class BertEncoder(nn.Module):
         self.output_attentions = config.output_attentions
         self.output_hidden_states = config.output_hidden_states
         self.layer = nn.ModuleList([BertLayer(config) for _ in range(config.num_hidden_layers)])
+        self.gradient_checkpointing = False
 
     def forward(self, hidden_states, attention_mask, head_mask=None):
         all_hidden_states = ()
@@ -430,7 +432,24 @@ class BertEncoder(nn.Module):
             if self.output_hidden_states:
                 all_hidden_states = all_hidden_states + (hidden_states,)
 
-            layer_outputs, att_score = layer_module(hidden_states, attention_mask, head_mask[i])
+            if (
+                self.gradient_checkpointing
+                and self.training
+                and torch.is_grad_enabled()
+            ):
+                layer_outputs, att_score = checkpoint(
+                    layer_module,
+                    hidden_states,
+                    attention_mask,
+                    head_mask[i],
+                    use_reentrant=False,
+                )
+            else:
+                layer_outputs, att_score = layer_module(
+                    hidden_states,
+                    attention_mask,
+                    head_mask[i],
+                )
             hidden_states = layer_outputs[0]
             att_scores.append(att_score)
 

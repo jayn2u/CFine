@@ -15,6 +15,7 @@ import re
 from matplotlib import pyplot as plt
 from datasets.pedes import CuhkPedes
 from utils.visualize import visualize_image, visualize_img
+from utils.training import autocast_context, unwrap_model
 
 
 def test(data_loader, network, args, unique_image, epoch=0, return_metrics=False):
@@ -27,6 +28,9 @@ def test(data_loader, network, args, unique_image, epoch=0, return_metrics=False
     )
     # switch to evaluate mode
     network.eval()
+    raw_network = unwrap_model(network)
+    amp_enabled = getattr(args, "amp", False)
+    amp_dtype = getattr(args, "amp_dtype", "fp16")
     max_size = 6156
     img_feat_bank = torch.zeros(args.num_heads + 1, max_size, args.feature_size)
     text_feat_bank = torch.zeros(args.num_heads + 1, max_size, args.feature_size)
@@ -40,7 +44,7 @@ def test(data_loader, network, args, unique_image, epoch=0, return_metrics=False
                 segments,
                 input_masks,
                 caption_length,
-            ) = network.module.language_model.pre_process(captions)
+            ) = raw_network.language_model.pre_process(captions)
 
             tokens = tokens.cuda()
             segments = segments.cuda()
@@ -49,9 +53,10 @@ def test(data_loader, network, args, unique_image, epoch=0, return_metrics=False
             labels = labels.cuda()
             interval = images.shape[0]    # 64
 
-            img_output, text_output = network(
-                images, tokens, segments, input_masks
-            )
+            with autocast_context(amp_enabled, amp_dtype):
+                img_output, text_output = network(
+                    images, tokens, segments, input_masks
+                )
 
             for i in range(len(img_output)):
                 img_feat_bank[i][index : index + interval] = img_output[i]

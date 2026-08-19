@@ -105,6 +105,17 @@ class Model(nn.Module):
         self.bottleneck_text.bias.requires_grad_(False)
         self.bottleneck_text.apply(weights_init_kaiming)
         self.similarityNorm = nn.Softmax(dim=2)
+        self.set_gradient_checkpointing(
+            getattr(args, 'gradient_checkpointing', False)
+        )
+
+    def set_gradient_checkpointing(self, enabled: bool):
+        if hasattr(self.image_model, 'set_gradient_checkpointing'):
+            self.image_model.set_gradient_checkpointing(enabled)
+        elif hasattr(self.image_model, 'clip_model'):
+            self.image_model.clip_model.set_gradient_checkpointing(enabled)
+        self.language_model.set_gradient_checkpointing(enabled)
+        self.block.set_gradient_checkpointing(enabled)
 
     def forward(self, images, tokens, segments, input_masks):
         if self.image_model_name == 'clip':

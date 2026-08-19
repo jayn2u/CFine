@@ -7,6 +7,15 @@ from dataset_config import CUHK_PEDES_IMAGE_DIR, CUHK_PEDES_ANNO_DIR
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
+
+def _ema_decay(value):
+    decay = float(value)
+    if not 0.0 < decay < 1.0:
+        raise argparse.ArgumentTypeError(
+            'EMA decay must be strictly between 0 and 1'
+        )
+    return decay
+
 def parse_args():
     parser = argparse.ArgumentParser(description='command for train on CUHK-PEDES')
 
@@ -52,6 +61,12 @@ def parse_args():
     parser.add_argument('--lr_decay_type', type=str, default='exponential', help='One of "fixed" or "exponential"')
     parser.add_argument('--lr_decay_ratio', type=float, default=0.9)
     parser.add_argument('--epoches_decay', type=str, default='20,25,35', help='#epoches when learning rate decays')
+
+    parser.add_argument('--amp', action='store_true', help='enable CUDA automatic mixed precision')
+    parser.add_argument('--amp_dtype', choices=('fp16', 'bf16'), default='fp16', help='autocast dtype used when --amp is enabled')
+    parser.add_argument('--ema', action='store_true', help='evaluate an exponential moving average of the model weights')
+    parser.add_argument('--ema_decay', type=_ema_decay, default=0.999, help='EMA decay, strictly between 0 and 1')
+    parser.add_argument('--gradient_checkpointing', action='store_true', help='checkpoint image, text, and cross-attention transformer blocks during training')
 
     parser.add_argument('--nsave', type=str, default='')
 

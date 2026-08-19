@@ -27,6 +27,8 @@ def parse_args():
     parser.add_argument('--gpus', type=str, default='0')
     parser.add_argument('--epoch_start', type=int)
     parser.add_argument('--checkpoint_dir', type=str, default='')
+    parser.add_argument('--amp', action='store_true', help='enable CUDA automatic mixed precision')
+    parser.add_argument('--amp_dtype', choices=('fp16', 'bf16'), default='fp16', help='autocast dtype used when --amp is enabled')
 
     parser.add_argument('--lambda_diversity', type=float, default=0.2)
     parser.add_argument('--layer_ids', type=str, default='-1')

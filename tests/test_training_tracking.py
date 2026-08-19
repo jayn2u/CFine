@@ -77,6 +77,14 @@ class FakeNetwork:
         return {}
 
 
+class FakeEMA:
+    def __init__(self):
+        self.module = FakeNetwork()
+
+    def state_dict(self):
+        return {"module.weight": torch.tensor([2.0])}
+
+
 class FakeOptimizer:
     param_groups = [{"lr": 1e-4}]
 
@@ -101,6 +109,10 @@ class TrainingTrackingTest(unittest.TestCase):
             seed=42,
             resume=False,
             model_path=None,
+            amp=False,
+            amp_dtype="fp16",
+            ema=True,
+            ema_decay=0.999,
         )
         meters = {
             "loss": SimpleNamespace(avg=3.0, count=32),
@@ -127,6 +139,7 @@ class TrainingTrackingTest(unittest.TestCase):
             args.start_epoch = 0
             return FakeNetwork(), FakeOptimizer()
 
+        ema_model = FakeEMA()
         with (
             patch.object(train_module, "set_seed"),
             patch.object(train_module, "data_config", return_value=[]),
@@ -135,14 +148,15 @@ class TrainingTrackingTest(unittest.TestCase):
             patch.object(train_module, "CRLoss", return_value=object()),
             patch.object(train_module.nn, "DataParallel", FakeDataParallel),
             patch.object(train_module, "network_config", side_effect=network_config),
+            patch.object(train_module, "build_ema_model", return_value=ema_model),
             patch.object(
                 train_module,
                 "WarmupMultiStepLR",
                 return_value=FakeScheduler(),
             ),
             patch.object(train_module, "train", return_value=meters),
-            patch.object(train_module, "test", return_value=val_metrics),
-            patch.object(train_module, "save_checkpoint"),
+            patch.object(train_module, "test", return_value=val_metrics) as test_mock,
+            patch.object(train_module, "save_checkpoint") as save_mock,
             patch.object(
                 train_module,
                 "start_measurement",
@@ -175,6 +189,11 @@ class TrainingTrackingTest(unittest.TestCase):
         self.assertEqual(session.summary["val/best_t2i_R1"], 69.5)
         self.assertEqual(session.summary["val/best_epoch"], 1)
         self.assertTrue(session.finished)
+        self.assertIs(test_mock.call_args.args[1], ema_model.module)
+        self.assertEqual(
+            save_mock.call_args.args[0]["ema_model"]["module.weight"].item(),
+            2.0,
+        )
 
 
 if __name__ == "__main__":
